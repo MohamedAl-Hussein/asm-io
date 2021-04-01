@@ -10,6 +10,78 @@ TITLE AssemblyIO
 
 INCLUDE Irvine32.inc
 
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: mGetString
+; 
+; Displays a prompt to the user to enter a string and stores it at the address of the provided output argument.
+;
+; Preconditions:
+;     1. *prompt[] is a null-terminated string.
+;	  2. *outputBuffer[] is an array of BYTEs.
+;     3. bytesRead is a DWORD.
+;     4. bufferLength >= len(*outputBuffer[] + 1) > 0.
+;
+; Receives:
+;     prompt                = Address of message to display as prompt.
+;     outputBuffer          = Address of the variable to write the string input to.
+;     bufferLength		    = Length of the array at the address of the outputBuffer.
+;     bytesRead 		    = Address of variable to write the number of bytes read from input.
+;
+; Returns:
+;     *outputBuffer[]       = Input string provided by user.
+;     *bytesRead            = Total number of bytes read from input.
+; ----------------------------------------------------------------------------------------------------------------------
+mGetString MACRO prompt, outputBuffer, bufferLength, bytesRead 
+    PUSH            EAX
+    PUSH            ECX
+    PUSH            EDX
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Prompt user for input. 
+; ---------------------------------------------------------------------------
+    mDisplayString  prompt
+
+; ---------------------------------------------------------------------------
+; STEP 2a: Store input into outputBuffer. 
+; ---------------------------------------------------------------------------
+    MOV             EDX, outputBuffer
+    MOV             ECX, bufferLength
+    CALL            ReadString
+
+; ---------------------------------------------------------------------------
+; STEP 2b: Store number of bytes read. 
+; ---------------------------------------------------------------------------
+    MOV             EDI, bytesRead
+    MOV             [EDI], EAX
+
+    POP             EDI
+    POP             EDX
+    POP             ECX
+    POP             EAX
+ENDM
+
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: mDisplayString
+;
+; Displays a string at a given input address to the console.
+;
+; Preconditions:
+;     1. *inputBuffer[] is a null-terminated string. 
+;
+; Receives:
+;     inputBuffer           = Address of the string variable to write to the console.
+; ----------------------------------------------------------------------------------------------------------------------
+mDisplayString MACRO inputBuffer
+    PUSH            EDX
+
+    ; display provided string
+    MOV             EDX, inputBuffer
+    CALL            WriteString
+
+    POP             EDX
+ENDM
+
 ARR_LEN = 10d                                               ; length of array used for test procedure 
 ARR_LEN_STR TEXTEQU <">, %ARR_LEN, <">                      ; array length as an ASCII string
 ARR_SIZE = ARR_LEN * TYPE DWORD                             ; size of input array

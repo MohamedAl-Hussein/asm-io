@@ -333,6 +333,43 @@ _storeResult:
 	RET             20 
 ReadVal ENDP
 
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: WriteVal
+;
+; Converts a SDWORD integer to a string of ASCII digits and displays it to the console.
+;
+; Preconditions:
+;     inputVal is a SDWORD integer.
+;
+; Receives:
+;     inputVal			    = The integer to convert.
+;
+; Local Variables:
+;     printStr              = Byte array to store string representation of integer in. 
+; ----------------------------------------------------------------------------------------------------------------------
+WriteVal PROC
+    LOCAL           printStr[12]:BYTE
+    PUSH            ESI
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Convert integer input to string.
+; ---------------------------------------------------------------------------
+    PUSH            [EBP + 8]                               ; arg0 = inputVal
+    LEA             EDI, printStr 
+    PUSH            EDI                                     ; arg1 = &printStr[]
+    CALL            intToASCII   
+
+; ---------------------------------------------------------------------------
+; STEP 2: Display converted input.
+; ---------------------------------------------------------------------------
+    LEA             ESI, printStr
+    mDisplayString  ESI                                     ; print(str(inputVal))
+
+    POP             EDI
+    POP             ESI
+    RET             4
+WriteVal ENDP
 
 ; ----------------------------------------------------------------------------------------------------------------------
 ; Name: ASCIIToInt 

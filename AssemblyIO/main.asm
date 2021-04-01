@@ -199,6 +199,29 @@ EOL EQU NEWLINE, NULL                                       ; end of line
 .CODE
 main PROC
 
+    ; configure console window colors
+    PUSH            FONT_COLOR
+    PUSH            BACKGROUND_COLOR
+    CALL            configureConsoleSettings    
+
+    ; display intro message and rules
+    mDisplayString  OFFSET introMsg
+    mDisplayString  OFFSET rules
+
+    ; run tests
+    PUSH            ARR_LEN
+    PUSH            ARR_SIZE                                
+    PUSH            OFFSET inputPrompt                      
+    PUSH            OFFSET inputReprompt                    
+    PUSH            INPUT_BUFFER_LEN                        
+    PUSH            OFFSET arrayTitle                       
+    PUSH            OFFSET sumTitle                         
+    PUSH            OFFSET avgTitle                         
+    PUSH            OFFSET arrDelimiter                     
+    CALL            TestReadWrite   
+
+    ; display outro message
+    mDisplayString  OFFSET outroMsg
     ; exit to operating system
     INVOKE          ExitProcess, 0
 main ENDP
@@ -237,6 +260,181 @@ configureConsoleSettings PROC
     POP             EBP
     RET             8
 configureConsoleSettings ENDP
+
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: TestReadWrite
+;
+; Test procedure for ReadVal and WriteVal procedures.
+;
+; Preconditions:
+;     1. *inputPrompt[], *inputReprompt[], *arrayTitle[], *sumTitle[], *avgTitle[], *arrayDelimiter[] are all
+;        null-terminated strings.
+;     2. testSize = testLen * 4
+;     3. testLen, testSize, and bufferSize are DWORDs.
+;     4. bufferSize >= 12 (in order to accommodate for a signed DWORD integer in string representation).
+;
+; Receives:
+;     [EBP + 40]            = testLen
+;                                 Number of inputs to test for.
+;     [EBP + 36]            = testSize
+;                                 testLen * TYPE DWORD.
+;     [EBP + 32]            = &inputPrompt[]
+;                                 Address of input prompt message.
+;     [EBP + 28]            = &inputReprompt[]
+;                                 Address of input re-prompt message.
+;     [EBP + 24]            = bufferSize
+;                                 Size of input buffer.
+;     [EBP + 20]            = &arrayTitle[]
+;                                 Address of title for array display.
+;     [EBP + 16]            = &sumTitle[]
+;                                 Address of title for sum display.
+;     [EBP + 12]            = &avgTitle[]
+;                                 Address of title for average display.
+;     [EBP + 8]             = &arrayDelimiter[]
+;                                 Delimeter characters for array display.
+; ----------------------------------------------------------------------------------------------------------------------
+TestReadWrite PROC
+    PUSH            EBP
+    MOV             EBP, ESP
+    SUB             ESP, [EBP + 24]                         ; inputBuffer[bufferSize]
+    SUB             ESP, [EBP + 36]                         ; inputArray[testSize]
+    SUB             ESP, 12                                 ; inputVal, arrSum, arrAvg
+    PUSH            EAX
+    PUSH            ECX
+    PUSH            EDX
+    PUSH            ESI
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Get N = testLen integers from user. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _getIntegers:
+;     Repeatedly ask for an integer from user until
+;     they provide N = testLen valid integers.
+; --------------------------------------------------  
+    MOV             EDI, EBP
+    SUB             EDI, [EBP + 24]                         
+    SUB             EDI, [EBP + 36]                         ; EDI = &inputArray[]
+    MOV             ECX, [EBP + 40]                         ; ECX = testLen 
+_getIntegers:
+    PUSH            EDI
+
+    ; read input from user
+    PUSH            [EBP + 28]                              ; arg0 = &inputReprompt[]
+    PUSH            [EBP + 32]                              ; arg1 = &inputPrompt[]
+    MOV             ESI, EBP
+    SUB             ESI, [EBP + 24]
+    LEA             EDI, [ESI]
+    PUSH            EDI                                     ; arg2 = &inputBuffer[]
+    PUSH            DWORD PTR [EBP + 24]                    ; arg3 = bufferLen                
+    MOV             ESI, EBP
+    SUB             ESI, [EBP + 24]
+    SUB             ESI, [EBP + 36]
+    SUB             ESI, 4
+    LEA             EDI, [ESI]                               
+    PUSH            EDI                                     ; arg4 = &inputVal
+    CALL            ReadVal 
+
+    POP             EDI
+
+    ; store input to inputArray
+    CLD
+    MOV             ESI, EBP
+    SUB             ESI, [EBP + 24]
+    SUB             ESI, [EBP + 36]
+    SUB             ESI, 4                                  ; ESI = &inputVal
+    MOVSD                                                   ; *inputArray[offset] = *inputVal
+
+    LOOP            _getIntegers
+
+; ---------------------------------------------------------------------------
+; STEP 2: Compute array sum and average, and display them alongside array elements. 
+; ---------------------------------------------------------------------------
+    mDisplayString  [EBP + 20]                              ; print(*arrayTitle[])
+
+    ; get offset of inputArray
+    MOV             ESI, EBP
+    SUB             ESI, [EBP + 24]
+    SUB             ESI, [EBP + 36]                         ; ESI = &inputArray[]
+
+    ; get offset of arrSum
+    MOV             EDI, EBP
+    SUB             EDI, [EBP + 24]
+    SUB             EDI, [EBP + 36]
+    SUB             EDI, 8                                  ; EDI = &arrSum
+    MOV             DWORD PTR [EDI], 0                      ; *arrSum = 0
+
+; ---------------------------------------------------------------------------
+; STEP 2a: Display array elements. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _displayIntegers:
+;     Display all integers provided by user.
+;     Also track running total of provided integers.
+; --------------------------------------------------  
+    MOV             ECX, [EBP + 40]                         ; ECX = inputLen
+_displayIntegers:
+    ; update arrSum
+    MOV             EAX, [ESI]                              ; EAX = *inputArray[offset]
+    ADD             [EDI], EAX                              ; *arrSum += *inputArray[offset]
+
+    ; display integer
+    PUSH            EAX                                     ; arg0 = *inputArray[offset]
+    CALL            WriteVal                                ; print(*inputArray[offset])
+
+    ; skip delimiter if at end of array
+    CMP             ECX, 1                                  ; if (ECX == 1):
+    JE              _displaySum                             ;     goto _displaySum
+    mDisplayString  [EBP + 8]                               ; else: print(", ")
+
+    ADD             ESI, TYPE DWORD                         ; offset += 4
+    LOOP            _displayIntegers
+
+; ---------------------------------------------------------------------------
+; STEP 2b: Compute and display sum of array elements. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _displaySum:
+;     Display the sum of all elements in inputArray.
+; --------------------------------------------------  
+_displaySum:
+    mDisplayString  [EBP + 16]                              ; print(*sumTitle[])
+
+    ; get offset of arrSum
+    MOV             EDI, EBP
+    SUB             EDI, [EBP + 24]
+    SUB             EDI, [EBP + 36]
+    SUB             EDI, 8                                  ; EDI = &arrSum
+
+    ; display arrSum
+    MOV             EAX, [EDI]                              
+    PUSH            EAX                                     ; arg0 = *arrSum
+    CALL            WriteVal                                ; print(*arrSum)
+
+    mDisplayString  [EBP + 12]                              ; print(*avgTitle[])
+
+; ---------------------------------------------------------------------------
+; STEP 2c: Compute and display average of array elements. 
+; ---------------------------------------------------------------------------
+    ; compute average
+    MOV             ECX, [EBP + 40]                         ; ECX = inputLen
+    CDQ
+    IDIV            ECX                                     ; average = EAX = floor(*arrSum / *inputLen)
+
+    ; display average
+    PUSH            EAX
+    CALL            WriteVal                                ; print(average)  
+    
+    POP             EDI
+    POP             ESI
+    POP             EDX
+    POP             ECX
+    POP             EAX
+    MOV             ESP, EBP
+    POP             EBP
+    RET             36
+TestReadWrite ENDP
 
 ; ----------------------------------------------------------------------------------------------------------------------
 ; Name: ReadVal

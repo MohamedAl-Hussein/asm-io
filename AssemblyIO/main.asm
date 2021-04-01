@@ -238,6 +238,269 @@ configureConsoleSettings PROC
     RET             8
 configureConsoleSettings ENDP
 
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: ASCIIToInt 
+;
+; Converts a digit string to a signed DWORD integer.
+;
+; Validates input for invalid characters and too large of an input.
+;
+; Preconditions:
+;     1. *input[] is a BYTE array.
+;     2. strLen >= len(*input[]).
+;     3. strLen is a DWORD.
+;     4. *output is a SDWORD.
+;     5. *errorCode is a DWORD and equal to 0. 
+;
+; Receives:
+;     [EBP + 20]            = &input[]
+;                                 Input string to convert.
+;     [EBP + 16]            = strLen
+;                                 Length of input string.
+;     [EBP + 12]            = &output
+;                                 Address of variable to store result in.
+;     [EBP + 8]             = &errorCode
+;                                 Address of variable to store error code in.
+;
+; Local Variables:
+;     result                = holds converted value of integer string
+;     position              = tracks index position in integer string
+;     temp                  = temporary placeholder to store result of 10^position
+;     sign                  = integer value for the integer string's sign (-1 for negative, 1 for positive)
+;     digitsScanned         = tracks number of digits scanned to prevent hard-to-detect overflow conditions
+;     lastDigitScanned      = holds the most recent digit scanned, to use for detecting leading zeros
+;
+; Returns:
+;     *output               = int(*input[])
+;     *errorCode            = 98: Not a valid integer
+;                             97: Number too big
+;                             0: No error
+; ----------------------------------------------------------------------------------------------------------------------
+ASCIIToInt PROC
+    LOCAL           result:SDWORD, position:DWORD, temp:SDWORD, sign:SDWORD, digitsScanned:DWORD, lastDigitScanned:DWORD
+    PUSH            EAX
+    PUSH            EBX
+    PUSH            ECX
+    PUSH            EDX
+    PUSH            ESI
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Initialize local variables.
+; ---------------------------------------------------------------------------
+    ; initialize variables
+    MOV             result, 0
+    MOV             position, 0
+    MOV             digitsScanned, 0
+
+    ; assume input is positive
+    MOV             sign, 1                                 
+
+; ---------------------------------------------------------------------------
+; STEP 2: Check if provided string is empty. 
+; ---------------------------------------------------------------------------
+    XOR             ECX, ECX
+    MOV             EAX, [EBP + 16]                         ; EAX = strLen
+    TEST            EAX, EAX                                ; if (strLen == 0):
+    JZ              _notDigit                               ;     goto _notDigit
+
+; ---------------------------------------------------------------------------
+; STEP 3: Determine if input is positive or negative. 
+; ---------------------------------------------------------------------------
+    MOV             ESI, [EBP + 20]                         ; ESI = &input[] 
+    MOV             AL, BYTE PTR [ESI]                      ; EAX = *input[0]
+    CMP             EAX, '-'                                ; if (EAX != '-'):
+    JNE             _goToEndOfString                        ;     goto _goToEndOfString
+    MOV             sign, -1                                ; sign = -1
+
+; ---------------------------------------------------------------------------
+; STEP 4: Go to end of input string and move backwards. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _goToEndOfString:
+;     Move to end of string, just before the 
+;     null-terminator.
+; --------------------------------------------------  
+_goToEndOfString:
+    MOV             ECX, [EBP + 16]                         ; ECX = strLen 
+    ADD             ESI, ECX                                ; ESI = &input[-1] 
+    DEC             ESI                                     ; ESI = &input[-2] 
+    STD
+
+; ---------------------------------------------------------------------------
+; STEP 5: Convert string input to its integer representation. Check for any
+;         errors along the way.
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _byteToInt:
+;     Convert each byte to a digit and add its 
+;     positional value to the total.
+;
+;     Check for any invalid input or overflow and 
+;     and throw an error if any are found.
+; --------------------------------------------------  
+_byteToInt:
+    XOR             EAX, EAX
+    LODSB                                                   ; currVal = AL = *input[offset]; offset -= 1
+
+; ---------------------------------------------------------------------------
+; STEP 5a: Check if value at current position is a digit. 
+; ---------------------------------------------------------------------------
+    CMP             AL, 30h                                 ; if (currVal < 30h):
+    JB              _notDigit                               ;     goto _notDigit
+    CMP             AL, 39h                                 ; elif (currVal > 39h):
+    JA              _notDigit                               ;     goto _notDigit
+
+    INC             DWORD PTR digitsScanned
+
+; ---------------------------------------------------------------------------
+; STEP 5b: Convert value at current position into an integer. 
+; ---------------------------------------------------------------------------
+    SUB             AL, 30h                                 ; AL = currVal - '0' 
+
+    MOV             lastDigitScanned, EAX 
+
+; ---------------------------------------------------------------------------
+; STEP 5c: Compute the digit's numerical value according to its position.
+;
+;          Then check if computation caused any overflow.
+; ---------------------------------------------------------------------------
+    MOV             EBX, 10
+    PUSH            EBX                                     ; arg0 = 10
+    PUSH            position                                ; arg1 = position
+    LEA             EBX, temp
+    PUSH            EBX                                     ; arg2 = *temp
+    CALL            pow32                                   ; *temp = 10 ^ position
+
+    IMUL            temp                                    ; EAX = (currVal - '0') * (10 ^ position)
+    JO              _overflow                               ; if (OV == 1): goto _overflow
+
+; ---------------------------------------------------------------------------
+; STEP 5d: Multiply result of computation by the input's sign and add it to
+;          the running total.
+;
+;          Then check if addition caused any overflow.
+; ---------------------------------------------------------------------------
+    MOV             EBX, sign                               ; EBX = sign
+    IMUL            EBX                                     ; EAX = sign * ((currVal - '0') * (10 ^ position))
+
+    ADD             result, EAX                             ; result += sign * ((currVal - '0') * (10 ^ position))
+    JO              _overflow                               ; if (OV == 1): goto _overflow
+
+    INC             position                                ; position += 1
+    LOOP            _byteToInt
+
+; ---------------------------------------------------------------------------
+; STEP 6: Make some final checks to make sure input was valid.
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _checkLeadingZeros:
+;     Don't produce an overflow error if digit is 
+;     front-padded with zeros. 
+; --------------------------------------------------  
+    CLD
+    XOR             EAX, EAX
+    MOV             ESI, [EBP + 20]                         ; ESI = &input[]
+    LODSB                                                   ; EAX = *input[0]
+    SUB             EAX, 30h                                ; EAX = int(*input[0])
+_checkLeadingZeros:
+    TEST            EAX, EAX                                ; if (*input[0] == 0 || (*input[0] in {+, -} && *input[1] == 0)):
+    JZ              _clearErrorCode                         ;     goto _clearErrorCode
+
+; --------------------------------------------------  
+; _checkInputLen:
+;     Check total number of digits scanned and throw
+;     and overflow error if it exceeds the maximum
+;     digits possible for an SDWORD (max of 10 digits).
+; --------------------------------------------------  
+_checkInputLen:
+    MOV             EBX, digitsScanned
+    CMP             EBX, 10                                 ; if (digitsScanned > 10):
+    JG              _overflow                               ;     goto _overflow
+    JMP             _clearErrorCode                         ; else: goto _clearErrorCode
+
+; --------------------------------------------------  
+; _notDigit:
+;     Determine if non-digit is the input's sign, or
+;     if it appears in middle of string.
+; --------------------------------------------------  
+    CLD
+    XOR             EAX, EAX
+    MOV             ESI, [EBP + 20]                         ; ESI = &input[]
+    LODSB                                                   ; EAX = *input[0]
+_notDigit:
+    ; non-digit in middle of input string
+    CMP             ECX, 1                                  ; if (ECX != 1):
+    JNE             _invalidInput                           ;     goto _invalidInput
+
+    ; non-digit is not a valid sign
+    CMP             EAX, '-'                                ; if (*input[0] == '-'):
+    JE              _validSign                              ;     goto _validSign
+    CMP             EAX, '+'                                ; elif (*input[0] != '+'):
+    JNE             _invalidInput                           ;     goto _invalidInput
+
+; --------------------------------------------------  
+; _validSign:
+;     If sign is valid, check input for leading zeros
+;     or too many digits.
+; --------------------------------------------------  
+_validSign:
+    MOV             EAX, lastDigitScanned
+    JMP             _checkLeadingZeros
+
+; ---------------------------------------------------------------------------
+; STEP 7: Store error code (or none) to be returned to caller.
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _invalidInput:
+;     Store error code for invalid input.
+; --------------------------------------------------  
+_invalidInput:
+    MOV             EDI, [EBP + 8]                          ; EDI = &errorCode
+    MOV             EAX, 98
+    MOV             [EDI], EAX                              ; *errorCode = 98 
+    MOV             result, 0
+    JMP             _storeResult
+
+; --------------------------------------------------  
+; _overflow:
+;     Store error code for integer overflow.
+; --------------------------------------------------  
+_overflow:
+    MOV             EDI, [EBP + 8]                          ; EDI = &errorCode
+    MOV             EAX, 97
+    MOV             [EDI], EAX                              ; *errorCode = 97 
+    MOV             result, 0
+    JMP             _storeResult
+
+; --------------------------------------------------  
+; _clearErrorCode:
+;     No errors were produced, so clear error code.
+; --------------------------------------------------  
+_clearErrorCode:
+    MOV             EDI, [EBP + 8]                          ; EDI = &errorCode
+    MOV             EAX, 0
+    MOV             [EDI], EAX                              ; *errorCode = 0
+
+; --------------------------------------------------  
+; _storeResult:
+;     Store converted input (or none if error thrown).
+; --------------------------------------------------  
+_storeResult:
+    MOV             EDI, [EBP + 12]                         ; EDI = &output
+    MOV             EAX, result
+    MOV             [EDI], EAX                              ; *output = result
+    CLD
+
+    POP             EDI
+    POP             ESI
+    POP             EDX
+    POP             ECX
+    POP             EBX
+    POP             EAX
+    RET             16
+ASCIIToInt ENDP
+
 ; ---------------------------------------------------------------------------------------------------- 
 ; Name: pow32
 ;

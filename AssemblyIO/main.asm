@@ -131,4 +131,39 @@ main PROC
     INVOKE          ExitProcess, 0
 main ENDP
 
+; ----------------------------------------------------------------------------------------------------------------------
+; Name: configureConsoleSettings
+;
+; Configures console window text color and background color.
+;
+; Preconditions:
+;     1. FONT_COLOR and BACKGROUND_COLOR are valid color values as per Irvine guidelines.
+;
+; Recieves:
+;     [EBP + 12]            = FONT_COLOR 
+;     [EBP + 8]             = BACKGROUND_COLOR 
+; ----------------------------------------------------------------------------------------------------------------------
+configureConsoleSettings PROC
+    PUSH            EBP
+    MOV             EBP, ESP
+    PUSH            EAX
+
+; ---------------------------------------------------------------------------
+; STEP 1: Set text font and background color.
+; ---------------------------------------------------------------------------
+    MOV             EAX, [EBP + 12]                         ; EAX = FONT_COLOR 
+    ADD             EAX, [EBP + 8]                          ; EAX += BACKGROUND_COLOR 
+    CALL            SetTextColor
+
+; ---------------------------------------------------------------------------
+; STEP 2: Apply background color to entire window. 
+; ---------------------------------------------------------------------------
+    CALL			Clrscr									
+
+    POP				EAX
+    MOV             ESP, EBP
+    POP             EBP
+    RET             8
+configureConsoleSettings ENDP
+
 END main

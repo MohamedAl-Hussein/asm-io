@@ -239,6 +239,102 @@ configureConsoleSettings PROC
 configureConsoleSettings ENDP
 
 ; ----------------------------------------------------------------------------------------------------------------------
+; Name: ReadVal
+;
+; Displays a prompt to the user to enter a SDWORD integer; then converts the string input from ASCII digits into an 
+; integer and stores it at the output address provided.
+;
+; Validates user input by checking for invalid characters, and for overflow from passing too big of a value.
+;
+; Preconditions:
+;     1. *outputVal is a SDWORD variable.
+;     2. *prompt[] and *reprompt[] are null-terminated strings.
+;     3. *outputVal is a SDWORD type.
+;     4. *outputBuffer[] is an array of BYTEs.
+;     5. bufferLength >= len(*outputBuffer[]) > 0.
+;
+; Receives:
+;     [EBP + 24]            = &reprompt[]
+;                                 Address of message to display as a re-prompt.
+;     [EBP + 20]            = &prompt[]
+;                                 Address of message to display as prompt.
+;     [EBP + 16]            = &outputBuffer[]
+;                                 Address of the variable to write the string input to.
+;     [EBP + 12]            = bufferLength
+;                                 Length of the array at the address of the outputBuffer.
+;     [EBP + 8]             = &outputVal 
+;                                 Address of variable to write the converted integer to.
+;
+; Local Variables:
+;     strLen                = number of bytes read from input
+;     output                = temporary variable to store converted string
+;     errorCode             = stores any error codes returned during conversion step
+;
+; Returns:
+;     *outputVal		    = Valid input converted to an integer.
+; ----------------------------------------------------------------------------------------------------------------------
+ReadVal PROC
+    LOCAL           strLen:DWORD, output:SDWORD, errorCode:DWORD
+    PUSH            EAX
+    PUSH            EBX
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Get input from user and validate it. Then convert it to an integer.
+; ---------------------------------------------------------------------------
+    ; prompt user for a signed integer
+    LEA             EDI, strLen                             
+    mGetString      [EBP + 20], [EBP + 16], [EBP + 12], EDI
+
+; --------------------------------------------------  
+; _convertInput:
+;     Convert user input into an integer.
+;     
+;     If the conversion returned an error, ask
+;     user to provide another value.
+; --------------------------------------------------  
+_convertInput:
+    ; convert user input to integer
+    PUSH            [EBP + 16]                              ; arg0 = &outputBuffer[]
+    PUSH            strLen                                  ; arg1 = bytesRead
+    LEA             EDI, output 
+    PUSH            EDI                                     ; arg2 = *output 
+    LEA             EDI, errorCode                          
+    PUSH            EDI                                     ; arg3 = *errorCode
+    CALL            ASCIIToInt   
+
+    ; check error code to see if anything went wrong
+    MOV             EAX, errorCode
+    TEST            EAX, EAX                                ; if (errorCode == 0):
+    JZ              _storeResult                            ;     goto _storeResult
+    mExceptionHandler errorCode                             ; else: raise exception(*errorCode)
+
+    ; display reprompt message and ask for another value
+    LEA             EDI, strLen                             
+    mGetString      [EBP + 24], [EBP + 16], [EBP + 12], EDI 
+
+    JMP             _convertInput
+
+; ---------------------------------------------------------------------------
+; STEP 2: Store converted input. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _storeResult:
+;     Store converted value into outputVal.
+; --------------------------------------------------  
+_storeResult:
+    MOV             EDI, [EBP + 8]                          ; EDI = &outputVal
+    MOV             EAX, output
+    MOV             [EDI], EAX                              ; *outputVal = output
+
+    POP             EDI
+    POP             EBX
+    POP             EAX
+	RET             20 
+ReadVal ENDP
+
+
+; ----------------------------------------------------------------------------------------------------------------------
 ; Name: ASCIIToInt 
 ;
 ; Converts a digit string to a signed DWORD integer.

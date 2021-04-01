@@ -11,6 +11,78 @@ TITLE AssemblyIO
 INCLUDE Irvine32.inc
 
 ; ----------------------------------------------------------------------------------------------------------------------
+; Name: mExceptionHandler
+;
+; Given a valid error-code, displays a custom error message to the console.
+;
+; Preconditions:
+;     1. The error code provided is a DWORD integer.
+;     2. The error code is defined within the macro. Undefined error codes will not raise any warnings.
+;
+; Receives:
+;     errorCode             = An integer denoting an error code
+;
+; Error Code Table:
+;     98                    OverflowError
+;     97                    TypeError - invalid signed integer
+;     0                     No error
+; ----------------------------------------------------------------------------------------------------------------------
+mExceptionHandler MACRO errorCode
+    LOCAL errorNotInt, errorOV
+    LOCAL _noError, _notInt, _overflow, _throwError
+
+    ERROR_NOT_INT = 98d                                     ; error code for non integer 
+    ERROR_OVERFLOW = 97d                                    ; error code for overflow 
+
+    ERROR_MSG_COLOR = lightRed                              ; console text color (error messages)
+    BACKGROUND_COLOR = black * 16                           ; console text background color
+
+    .DATA
+      errorNotInt   BYTE    "TypeError: Value provided is not a signed integer.", 13, 10, 0 
+      errorOV       BYTE    "OverflowError: Value provided is too large or too small to fit in destination operand.", 
+                            13, 10, 0 
+
+    .CODE
+; ---------------------------------------------------------------------------
+; STEP 1: Test if errorCode is 0 in which case there is no error.
+; ---------------------------------------------------------------------------
+      MOV         EAX, errorCode
+      TEST        EAX, EAX
+      JZ          _noError
+
+; ---------------------------------------------------------------------------
+; STEP 2: Search all known error codes for a match. 
+; ---------------------------------------------------------------------------
+      CMP         EAX, ERROR_NOT_INT
+      JE          _notInt
+      CMP         EAX, ERROR_OVERFLOW
+      JE          _overflow
+
+; ---------------------------------------------------------------------------
+; STEP 3: No match was found, so we can stop searching. 
+; ---------------------------------------------------------------------------
+      JMP         _noError
+
+; ---------------------------------------------------------------------------
+; STEP 4: If a match was found, display its error message. 
+; ---------------------------------------------------------------------------
+_notInt:
+      PUSH        OFFSET errorNotInt 
+      JMP         _throwError
+
+_overflow:
+      PUSH        OFFSET errorOV
+      JMP         _throwError 
+
+_throwError:
+      PUSH        ERROR_MSG_COLOR
+      PUSH        BACKGROUND_COLOR
+      CALL        displayErrorMsg 
+
+_noError:
+ENDM
+
+; ----------------------------------------------------------------------------------------------------------------------
 ; Name: mGetString
 ; 
 ; Displays a prompt to the user to enter a string and stores it at the address of the provided output argument.

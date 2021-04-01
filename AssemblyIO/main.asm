@@ -502,6 +502,156 @@ _storeResult:
 ASCIIToInt ENDP
 
 ; ---------------------------------------------------------------------------------------------------- 
+; Name: intToASCII 
+; 
+; Converts a signed DWORD integer into a null-terminated ASCII string.
+;
+; Receives:
+;     [EBP + 12]            = input
+;                                 Value of signed integer to convert.
+;     [EBP + 8]             = &result[]
+;                                 Address to store result in.
+;
+; Local Variables:
+;     digits[]              = byte array to temporarily store converted digit string
+;     sign                  = store ASCII character for sign if it is negative
+;     len                   = track converted digit string's length
+;
+; Returns:
+;     *result[]             = str(input)
+; ---------------------------------------------------------------------------------------------------- 
+intToASCII PROC
+    LOCAL           digits[12]:BYTE, sign:BYTE, len:DWORD
+    PUSH            EAX
+    PUSH            EBX
+    PUSH            ECX
+    PUSH            EDX
+    PUSH            ESI
+    PUSH            EDI
+
+; ---------------------------------------------------------------------------
+; STEP 1: Initialize local variables. 
+; ---------------------------------------------------------------------------
+    MOV             sign, 0h 
+    MOV             len, 0
+
+; ---------------------------------------------------------------------------
+; STEP 2: Add null-terminator to digits string. 
+; ---------------------------------------------------------------------------
+    LEA             EDI, digits
+    CLD
+    XOR             EAX, EAX
+    STOSB
+    INC             len
+
+; ---------------------------------------------------------------------------
+; STEP 3: Check input sign and store it in digits string if it is negative. 
+;
+;         If input was negative, convert it to positive.
+; ---------------------------------------------------------------------------
+    MOV             EAX, [EBP + 12]                         ; EAX = input
+    TEST            EAX, EAX                                ; if (input >= 0):
+    JNS             _checkIfZero                            ;     goto _checkIfZero
+
+    ; convert input to positive 
+    MOV             EAX, [EBP + 12]                         ; EAX = input
+    MOV             EBX, -1
+    IMUL            EBX                                     ; EAX = input * -1
+    MOV             sign, '-'
+
+; ---------------------------------------------------------------------------
+; STEP 4: Convert integer to a string. 
+; ---------------------------------------------------------------------------
+; --------------------------------------------------  
+; _checkIfZero:
+;     Check for special condition when input == 0.
+; --------------------------------------------------  
+_checkIfZero:
+    TEST            EAX, EAX                                ; if (input == 0):
+    JZ              _zero                                   ;     goto _zero
+
+; --------------------------------------------------  
+; _convertToString:
+;     Convert integer to its ASCII representation. 
+;
+;     Stop once quotient is equal to zero.
+; --------------------------------------------------  
+    MOV             EBX, 10
+_convertToString:
+    TEST            EAX, EAX                                ; if (EAX == 0):                        
+    JZ              _checkSign                              ;     goto _checkSign
+
+    ; convert digit to ASCII
+    XOR             EDX, EDX
+    DIV             EBX                                     ; EAX = floor(input / 10)
+    PUSH            EAX
+    MOV             EAX, EDX
+    ADD             EAX, 30h                                ; EAX = floor(input / 10) + '0'
+    STOSB                                                   ; *digits[offset] = floor(input / 10) + '0'; offset++
+    POP             EAX
+
+    INC             len
+    JMP             _convertToString
+
+; --------------------------------------------------  
+; _zero:
+;     Handle special case for when input == 0. 
+; --------------------------------------------------  
+_zero:
+    MOV             EAX, 30h
+    STOSB
+    INC             len
+    JMP             _copyStr
+
+; --------------------------------------------------  
+; _checkSign:
+;     Add '-' character to beginning of string if
+;     input was negative.
+; --------------------------------------------------  
+_checkSign:
+    MOVZX           EAX, sign
+    TEST            EAX, EAX                                ; if (sign == 0h):
+    JZ              _copyStr                                ;     goto _copyStr
+    STOSB                                                   ; else: *digits[offset] = '-'
+    INC             len
+
+; --------------------------------------------------  
+; _copyStr:
+;     Copy over digits string to result.
+;
+;     Converted digits are in reverse order in 
+;     digits string, so loop through it in reverse.
+; --------------------------------------------------  
+_copyStr:
+    LEA             ESI, digits
+    ADD             ESI, len 
+    DEC             ESI                                     ; ESI = &digits[len - 1]
+    MOV             EDI, [EBP + 8]                          ; EDI = &result[]
+
+    MOV             ECX, len
+
+; --------------------------------------------------  
+; _copyDigit:
+;     Copy a single digit from digits string to
+;     result.
+; --------------------------------------------------  
+_copyDigit:
+    STD
+    LODSB                                                   ; EAX = *digits[inOffset]; inOffset--
+    CLD
+    STOSB                                                   ; *result[outOffset] = *digits[inOffset]; outOffset++
+    LOOP            _copyDigit
+
+    POP             EDI
+    POP             ESI
+    POP             EDX
+    POP             ECX
+    POP             EBX
+    POP             EAX
+    RET             8
+intToASCII ENDP
+
+; ---------------------------------------------------------------------------------------------------- 
 ; Name: pow32
 ;
 ; Returns the result of a ^ b.

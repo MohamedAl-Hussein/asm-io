@@ -166,4 +166,56 @@ configureConsoleSettings PROC
     RET             8
 configureConsoleSettings ENDP
 
+; ---------------------------------------------------------------------------------------------------- 
+; Name: displayErrorMsg 
+; 
+; Displays error message in ERROR_MSG_COLOR to user.
+;
+; Preconditions: 
+;     1. errorCode > 0 
+;     2. errorMsg is a null-terminated string.
+;     3. ERROR_MSG_COLOR, BACKGROUND_COLOR are valid color values as per Irvine guidelines.
+;
+; Receives:
+;	  [EBP + 16]            = &errorMsg[]
+;     [EBP + 12]            = ERROR_MSG_COLOR
+;     [EBP + 8]             = BACKGROUND_COLOR
+; ---------------------------------------------------------------------------------------------------- 
+displayErrorMsg PROC
+    PUSH			EBP
+    MOV				EBP, ESP	
+    PUSH			EAX
+    PUSH			EBX
+    PUSH			EDX
+
+; ---------------------------------------------------------------------------
+; STEP 1: Save current text and background colors. 
+; ---------------------------------------------------------------------------
+    XOR				EBX, EBX
+    CALL			GetTextColor								
+    MOVZX			EBX, AL
+
+; ---------------------------------------------------------------------------
+; STEP 2: Set text and background colors for error message then display error 
+;         message. 
+; ---------------------------------------------------------------------------
+    MOV             EAX, [EBP + 12]                         ; EAX = ERROR_MSG_COLOR
+    ADD             EAX, [EBP + 8]                          ; EAX += BACKGROUND_COLOR
+    CALL			SetTextColor
+
+    mDisplayString  [EBP + 16]                              ; print(*errorMsg[])
+
+; ---------------------------------------------------------------------------
+; STEP 3: Restore text and background colors. 
+; ---------------------------------------------------------------------------
+    MOV				EAX, EBX
+    CALL			SetTextColor
+
+    POP				EDX
+    POP				EBX
+    POP				EAX
+    POP				EBP
+    RET			    12	
+displayErrorMsg ENDP
+
 END main

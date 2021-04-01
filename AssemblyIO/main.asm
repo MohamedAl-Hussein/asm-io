@@ -239,6 +239,86 @@ configureConsoleSettings PROC
 configureConsoleSettings ENDP
 
 ; ---------------------------------------------------------------------------------------------------- 
+; Name: pow32
+;
+; Returns the result of a ^ b.
+;
+; Preconditions:
+;     1. a, b, and *result are DWORDs.
+;
+; Receives:
+;     [EBP + 16]            = a
+;                                 The base.
+;     [EBP + 12]            = b
+;                                 The exponent.
+;     [EBP + 8]             = &result
+;                                 Address to store result in.
+;
+; Returns:
+;     *result               = a ^ b
+; ---------------------------------------------------------------------------------------------------- 
+pow32 PROC
+    PUSH            EBP
+    MOV             EBP, ESP
+    PUSH            EAX
+    PUSH            EBX
+    PUSH            ECX
+    PUSH            EDX
+    PUSH            EDI
+
+    MOV             EAX, [EBP + 16]                         ; EAX = a 
+    MOV             ECX, [EBP + 12]                         ; ECX = b
+
+; ---------------------------------------------------------------------------
+; STEP 1: Check for special power conditions for when b == 0 or b == 1.
+; ---------------------------------------------------------------------------
+    TEST            ECX, ECX                                ; if (b == 0):
+    JZ              _zeroPow                                ;     goto _zeroPow
+    CMP             ECX, 1                                  ; elif (b == 1):
+    JE              _storeResult                            ;     goto _storeResult
+
+; ---------------------------------------------------------------------------
+; STEP 2: Compute a ^ b. 
+; ---------------------------------------------------------------------------
+; -------------------------------------------------- 
+; _powLoop:
+;     Repeatedly multiply a by itself b times.
+; -------------------------------------------------- 
+    MOV             EBX, EAX                                ; EBX = a
+    DEC             ECX
+_powLoop:
+    MUL             EBX                                     ; EAX *= a
+    LOOP            _powLoop
+
+    JMP             _storeResult
+
+; -------------------------------------------------- 
+; _zeroPow:
+;     If b == 0, then the result is 1.
+; -------------------------------------------------- 
+_zeroPow:
+    MOV             EAX, 1
+    JMP             _storeResult
+
+; -------------------------------------------------- 
+; _storeResult:
+;     Store answer to result.
+; -------------------------------------------------- 
+_storeResult:
+    MOV             EDI, [EBP + 8]                          ; EDI = &result
+    MOV             [EDI], EAX                              ; *result = a if b == 1, 1 if b == 0, else a^b 
+
+    POP             EDI
+    POP             EDX
+    POP             ECX
+    POP             EBX
+    POP             EAX
+    MOV             ESP, EBP
+    POP             EBP
+    RET             12
+pow32 ENDP
+
+; ---------------------------------------------------------------------------------------------------- 
 ; Name: displayErrorMsg 
 ; 
 ; Displays error message in ERROR_MSG_COLOR to user.
